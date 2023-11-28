@@ -206,7 +206,8 @@ typedef struct args {
 
 void usage(char* argv[]) {
     printf(
-        "%s: get an overlay of your choice on your wayland compositor\n"
+        "%s " PROJECT_VERSION "\n"
+        "get an overlay of your choice on your wayland compositor\n"
         "\n"
         "Usage: %s <path> [OPTIONS]\n"
         "\n"
