@@ -360,6 +360,9 @@ int main(int argc, char* argv[]) {
     wl_display_roundtrip(state.wl_display);
 
     state.wl_surface = wl_compositor_create_surface(state.wl_compositor);
+    struct wl_region* region = wl_compositor_create_region(state.wl_compositor);
+    wl_surface_set_input_region(state.wl_surface, region);
+    wl_region_destroy(region);
     state.zwlr_layer_surface_v1 = zwlr_layer_shell_v1_get_layer_surface(
         state.zwlr_layer_shell_v1,
         state.wl_surface,

@@ -1,6 +1,10 @@
 project('live-wayland-reaction', 'c',
   version : '0.1',
-  default_options : ['warning_level=3'])
+  default_options : [
+    'warning_level=3',
+    'b_lto=true',
+  ]
+)
 
 cc = meson.get_compiler('c')
 
