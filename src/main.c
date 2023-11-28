@@ -113,7 +113,7 @@ static struct wl_buffer* draw_frame(struct client_state* state) {
         state->target_width,
         state->target_height,
         stride,
-        WL_SHM_FORMAT_XRGB8888
+        WL_SHM_FORMAT_ARGB8888
     );
     wl_shm_pool_destroy(pool);
     close(fd);
