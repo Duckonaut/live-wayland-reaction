@@ -2,6 +2,8 @@
 
 Display an image of your choice over your Wayland compositor.
 
+![demo](./assets/demo.png)
+
 ## Requirements:
 - A wayland compositor supporting `wlr-layer-shell-unstable-v1`
 
