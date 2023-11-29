@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200112L
 #include <stdint.h>
 #include <errno.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -79,6 +80,8 @@ struct client_state {
     int target_width;
     int target_height;
 };
+
+static struct client_state* g_state;
 
 static void wl_buffer_release(void* data, struct wl_buffer* wl_buffer) {
     (void)data;
@@ -196,6 +199,35 @@ static const struct wl_registry_listener wl_registry_listener = {
     .global_remove = registry_global_remove,
 };
 
+static void cleanup(void) {
+    // get state
+    struct client_state* state = g_state;
+
+    zwlr_layer_surface_v1_destroy(state->zwlr_layer_surface_v1);
+    wl_surface_destroy(state->wl_surface);
+    zwlr_layer_shell_v1_destroy(state->zwlr_layer_shell_v1);
+    wl_compositor_destroy(state->wl_compositor);
+    wl_shm_destroy(state->wl_shm);
+    wl_registry_destroy(state->wl_registry);
+    wl_display_disconnect(state->wl_display);
+
+    if (state->scaled_image_data != state->image_data)
+        free(state->scaled_image_data);
+
+    stbi_image_free(state->image_data);
+}
+
+// signal handler
+static void signal_cleanup(int sig) {
+    printf("[lwr] received signal %d\n", sig);
+
+    if (sig == SIGINT || sig == SIGTERM) {
+        printf("[lwr] exiting\n");
+    }
+    cleanup();
+    exit(0);
+}
+
 typedef struct args {
     char* image_path;
     int target_width;
@@ -308,6 +340,18 @@ int main(int argc, char* argv[]) {
     args_t args = args_parse(argc, argv);
 
     struct client_state state = { 0 };
+    g_state = &state;
+
+    // register signal handler
+    if (signal(SIGINT, signal_cleanup) == SIG_ERR) {
+        printf("[lwr] error: unable to register signal handler\n");
+        exit(1);
+    }
+
+    if (signal(SIGTERM, signal_cleanup) == SIG_ERR) {
+        printf("[lwr] error: unable to register signal handler\n");
+        exit(1);
+    }
 
     state.image_data = stbi_load(args.image_path, &state.width, &state.height, NULL, 4);
 
@@ -376,10 +420,7 @@ int main(int argc, char* argv[]) {
         args.target_width,
         args.target_height
     );
-    zwlr_layer_surface_v1_set_anchor(
-        state.zwlr_layer_surface_v1,
-        args.anchor
-    );
+    zwlr_layer_surface_v1_set_anchor(state.zwlr_layer_surface_v1, args.anchor);
     zwlr_layer_surface_v1_set_margin(
         state.zwlr_layer_surface_v1,
         args.margin,
@@ -399,13 +440,6 @@ int main(int argc, char* argv[]) {
     while (wl_display_dispatch(state.wl_display)) {
         /* This space deliberately left blank */
     }
-
-    wl_display_disconnect(state.wl_display);
-
-    if (state.scaled_image_data != state.image_data)
-        free(state.scaled_image_data);
-
-    stbi_image_free(state.image_data);
 
     return 0;
 }
