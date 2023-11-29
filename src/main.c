@@ -10,7 +10,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
-#include "xdg-shell-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -155,15 +154,6 @@ static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
     .configure = zwlr_layer_surface_configure,
 };
 
-static void xdg_wm_base_ping(void* data, struct xdg_wm_base* xdg_wm_base, uint32_t serial) {
-    (void)data;
-    xdg_wm_base_pong(xdg_wm_base, serial);
-}
-
-static const struct xdg_wm_base_listener xdg_wm_base_listener = {
-    .ping = xdg_wm_base_ping,
-};
-
 static void registry_global(
     void* data,
     struct wl_registry* wl_registry,
@@ -180,10 +170,6 @@ static void registry_global(
     } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
         state->zwlr_layer_shell_v1 =
             wl_registry_bind(wl_registry, name, &zwlr_layer_shell_v1_interface, 1);
-    } else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
-        struct xdg_wm_base* xdg_wm_base =
-            wl_registry_bind(wl_registry, name, &xdg_wm_base_interface, 1);
-        xdg_wm_base_add_listener(xdg_wm_base, &xdg_wm_base_listener, NULL);
     }
 }
 
