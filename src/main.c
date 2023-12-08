@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200112L
+#include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
 #include <signal.h>
@@ -11,6 +12,7 @@
 #include <unistd.h>
 #include <wayland-client.h>
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "wayland-client-protocol.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -67,6 +69,7 @@ struct client_state {
     struct wl_shm* wl_shm;
     struct wl_compositor* wl_compositor;
     struct zwlr_layer_shell_v1* zwlr_layer_shell_v1;
+    struct wl_output* wl_output;
     /* Objects */
     struct wl_surface* wl_surface;
     struct zwlr_layer_surface_v1* zwlr_layer_surface_v1;
@@ -78,6 +81,8 @@ struct client_state {
     uint8_t* scaled_image_data;
     int target_width;
     int target_height;
+
+    char* output_name;
 };
 
 static struct client_state* g_state;
@@ -154,6 +159,83 @@ static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
     .configure = zwlr_layer_surface_configure,
 };
 
+static void wl_output_name(void* data, struct wl_output* wl_output, const char* name) {
+    struct client_state* state = data;
+    printf("[lwr] output name: %s\n", name);
+    if (state->output_name != NULL && strcmp(name, state->output_name) == 0) {
+        state->wl_output = wl_output;
+    }
+}
+
+// we need to fill in all the fields, but we only care about the name
+
+static void
+wl_output_description(void* data, struct wl_output* wl_output, const char* description) {
+    (void)data;
+    (void)wl_output;
+    (void)description;
+}
+
+static void wl_output_done(void* data, struct wl_output* wl_output) {
+    (void)data;
+    (void)wl_output;
+}
+
+static void wl_output_scale(void* data, struct wl_output* wl_output, int32_t scale) {
+    (void)data;
+    (void)wl_output;
+    (void)scale;
+}
+
+static void wl_output_geometry(
+    void* data,
+    struct wl_output* wl_output,
+    int32_t x,
+    int32_t y,
+    int32_t physical_width,
+    int32_t physical_height,
+    int32_t subpixel,
+    const char* make,
+    const char* model,
+    int32_t transform
+) {
+    (void)data;
+    (void)wl_output;
+    (void)x;
+    (void)y;
+    (void)physical_width;
+    (void)physical_height;
+    (void)subpixel;
+    (void)make;
+    (void)model;
+    (void)transform;
+}
+
+static void wl_output_mode(
+    void* data,
+    struct wl_output* wl_output,
+    uint32_t flags,
+    int32_t width,
+    int32_t height,
+    int32_t refresh
+) {
+    (void)data;
+    (void)wl_output;
+    (void)flags;
+    (void)width;
+    (void)height;
+    (void)refresh;
+}
+
+static const struct wl_output_listener wl_output_listener = {
+    .name = wl_output_name,
+    .description = wl_output_description,
+    .done = wl_output_done,
+    .scale = wl_output_scale,
+    .geometry = wl_output_geometry,
+    .mode = wl_output_mode,
+};
+
 static void registry_global(
     void* data,
     struct wl_registry* wl_registry,
@@ -170,6 +252,10 @@ static void registry_global(
     } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
         state->zwlr_layer_shell_v1 =
             wl_registry_bind(wl_registry, name, &zwlr_layer_shell_v1_interface, 1);
+    } else if (strcmp(interface, wl_output_interface.name) == 0) {
+        struct wl_output* wl_output =
+            wl_registry_bind(wl_registry, name, &wl_output_interface, 4);
+        wl_output_add_listener(wl_output, &wl_output_listener, state);
     }
 }
 
@@ -220,6 +306,7 @@ typedef struct args {
     int target_height;
     int margin;
     enum zwlr_layer_surface_v1_anchor anchor;
+    char* output_name;
 } args_t;
 
 void usage(char* argv[]) {
@@ -239,6 +326,8 @@ void usage(char* argv[]) {
         "  -a, --anchor <anchor>:<anchor>   set the anchors of the overlay\n"
         "                                   (top|middle|bottom):(left|middle|right)\n"
         "                                   default: top:left\n"
+        "  -o, --output <output>            set the output of the overlay\n"
+        "                                   default: NULL\n"
         "\n"
         "Example:\n"
         "  %s /path/to/image.png -w 240 -m 8 -a top:middle\n",
@@ -255,6 +344,7 @@ args_t args_parse(int argc, char* argv[]) {
         .target_height = 0,
         .anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT,
         .margin = 0,
+        .output_name = NULL,
     };
     if (argc < 2) {
         usage(argv);
@@ -276,6 +366,9 @@ args_t args_parse(int argc, char* argv[]) {
             args.target_height = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--margin") == 0) {
             args.margin = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0) {
+            char* output = argv[++i];
+            args.output_name = output;
         } else if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--anchor") == 0) {
             char* anchor = argv[++i];
             if (strcmp(anchor, "top:left") == 0) {
@@ -385,6 +478,10 @@ int main(int argc, char* argv[]) {
     state.target_width = args.target_width;
     state.target_height = args.target_height;
 
+    if (args.output_name != NULL) {
+        state.output_name = args.output_name;
+    }
+
     state.wl_display = wl_display_connect(NULL);
     state.wl_registry = wl_display_get_registry(state.wl_display);
     wl_registry_add_listener(state.wl_registry, &wl_registry_listener, &state);
@@ -394,10 +491,23 @@ int main(int argc, char* argv[]) {
     struct wl_region* region = wl_compositor_create_region(state.wl_compositor);
     wl_surface_set_input_region(state.wl_surface, region);
     wl_region_destroy(region);
+
+    struct wl_output* output = NULL;
+
+    if (args.output_name != NULL) {
+        wl_display_dispatch(state.wl_display);
+
+        output = state.wl_output;
+        if (output == NULL) {
+            printf("[lwr] error: output %s not found\n", args.output_name);
+            exit(1);
+        }
+    }
+
     state.zwlr_layer_surface_v1 = zwlr_layer_shell_v1_get_layer_surface(
         state.zwlr_layer_shell_v1,
         state.wl_surface,
-        NULL,
+        output,
         ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
         PROJECT_NAME
     );
